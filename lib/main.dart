@@ -1,24 +1,50 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:geocoding/geocoding.dart';
-
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'firebase_options.dart';
+import 'nbloc/Event.dart';
+import 'nbloc/State.dart';
+import 'nbloc/bloc.dart';
+
+
+
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+FlutterLocalNotificationsPlugin();
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform,);
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+
+
+
+
+  //local_notifications
+  const AndroidInitializationSettings initializationSettingsAndroid =
+  AndroidInitializationSettings('@mipmap/ic_launcher');
+  const InitializationSettings initializationSettings =
+  InitializationSettings(android: initializationSettingsAndroid);
+  await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
   runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      home: HomeScreen(),
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(create: (context) => LocationBloc()),
+        BlocProvider(create: (context) => MessageBloc()),
+      ],
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'Flutter Demo',
+        home: HomeScreen(),
+      ),
     );
   }
 }
@@ -29,86 +55,47 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  String _message = "";
-  String _latitude = "";
-  String _longitude = "";
-  String _address = "";
-
   @override
   void initState() {
     super.initState();
     _initializeFCM();
-    _loadSavedLocation();
+    BlocProvider.of<LocationBloc>(context).add(LoadLocation());
   }
 
-  // تهيئة Firebase Cloud Messaging
   Future<void> _initializeFCM() async {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
-
-    // طلب إذن الوصول للإشعارات
     NotificationSettings settings = await messaging.requestPermission();
     print('User granted permission: ${settings.authorizationStatus}');
-
-
-    // الحصول على توكن الجهاز
     String? token = await messaging.getToken();
     print("FCM Token: $token");
 
-    // استلام الرسائل
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      setState(() {
-        _message = message.notification?.body ?? 'No message body';
-      });
-      _getLocation();
+      String messageBody = message.notification?.body ?? 'No message body';
+      _showNotification(messageBody); // عرض الإشعار كتنبيه محلي
+      BlocProvider.of<MessageBloc>(context).add(NewMessageReceived(messageBody));
+      BlocProvider.of<LocationBloc>(context).add(LoadLocation()); // جلب الموقع عند استقبال الرسالة
     });
   }
 
-  // تحميل الموقع المخزن من SharedPreferences
-  Future<void> _loadSavedLocation() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _latitude = prefs.getString('latitude') ?? 'Not available';
-      _longitude = prefs.getString('longitude') ?? 'Not available';
-      _address = prefs.getString('address') ?? 'Not available';
-    });
-  }
-
-  // الحصول على الموقع الحالي
-  Future<void> _getLocation() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      // اذا لم تكن خدمة الموقع مفعلّة
-      return;
-    }
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      // اذا تم رفض الإذن بشكل دائم
-      return;
-    }
-
-    Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high);
-
-    // الحصول على العنوان
-    List<Placemark> placemarks = await placemarkFromCoordinates(
-        position.latitude, position.longitude); // تأكد من استخدام هذا الشكل
-
-    // حفظ البيانات في SharedPreferences
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    prefs.setString('latitude', position.latitude.toString());
-    prefs.setString('longitude', position.longitude.toString());
-    prefs.setString('address', placemarks.first.name ?? 'No address');
-
-    setState(() {
-      _latitude = position.latitude.toString();
-      _longitude = position.longitude.toString();
-      _address = placemarks.first.name ?? 'No address';
-    });
+  Future<void> _showNotification(String messageBody) async {
+    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+    AndroidNotificationDetails(
+      'your_channel_id',
+      'your_channel_name',
+      channelDescription: 'your_channel_description',
+      importance: Importance.max,
+      priority: Priority.high,
+      ticker: 'ticker',
+    );
+    const NotificationDetails platformChannelSpecifics =
+    NotificationDetails(android: androidPlatformChannelSpecifics);
+    await flutterLocalNotificationsPlugin.show(
+      0,
+      'New Message',
+      messageBody,
+      platformChannelSpecifics,
+      payload: 'Default_Sound',
+    );
   }
 
   @override
@@ -120,11 +107,35 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text('Message: $_message', style: TextStyle(fontSize: 16)),
+            BlocBuilder<MessageBloc, MessageState>(
+              builder: (context, state) {
+                String message = 'No new message';
+                if (state is MessageReceived) {
+                  message = state.message;
+                }
+                return Text('Message: $message', style: TextStyle(fontSize: 16));
+              },
+            ),
             SizedBox(height: 20),
-            Text('Latitude: $_latitude', style: TextStyle(fontSize: 16)),
-            Text('Longitude: $_longitude', style: TextStyle(fontSize: 16)),
-            Text('Address: $_address', style: TextStyle(fontSize: 16)),
+            BlocBuilder<LocationBloc, LocationState>(
+              builder: (context, state) {
+                String latitude = 'Not available';
+                String longitude = 'Not available';
+                String address = 'Not available';
+                if (state is LocationLoaded) {
+                  latitude = state.latitude;
+                  longitude = state.longitude;
+                  address = state.address;
+                }
+                return Column(
+                  children: [
+                    Text('Latitude: $latitude', style: TextStyle(fontSize: 16)),
+                    Text('Longitude: $longitude', style: TextStyle(fontSize: 16)),
+                    Text('Address: $address', style: TextStyle(fontSize: 16)),
+                  ],
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -133,54 +144,3 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 
-
-
-
-
-
-// import 'package:firebase_core/firebase_core.dart';
-// import 'package:flutter/material.dart';
-// import 'package:flutter_bloc/flutter_bloc.dart';
-// import 'api/api_service.dart';
-// import 'bloc/login_bloc.dart';
-// import 'firebase_options.dart';
-// import 'screens/login_screen.dart';
-// import 'services/notification_service.dart';
-// import 'services/location_service.dart';
-//
-//
-//
-// void main() async {
-//   WidgetsFlutterBinding.ensureInitialized();
-//   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform,);
-//
-//
-//   final locationService = LocationService();
-//   final notificationService = NotificationService(locationService);
-//   await notificationService.initialize();
-//
-//   runApp(MyApp(notificationService));
-// }
-//
-// class MyApp extends StatelessWidget {
-//   final NotificationService notificationService;
-//
-//   MyApp(this.notificationService);
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     return MaterialApp(
-//       debugShowCheckedModeBanner: false,
-//       title: 'Flutter Notifications with Location',
-//       theme: ThemeData(primarySwatch: Colors.blue),
-//       home: BlocProvider(
-//         create: (context) => LoginBloc(
-//           ApiService(),
-//           notificationService,
-//           LocationService(),
-//         ),
-//         child: LoginScreen(),
-//       ),
-//     );
-//   }
-// }
