@@ -1,0 +1,60 @@
+{
+  "project_info": {
+    "project_number": "310546095918",
+    "project_id": "t43443-4dda2",
+    "storage_bucket": "t43443-4dda2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:310546095918:android:c7af443d8ed53f287b64bf",
+        "android_client_info": {
+          "package_name": "com.example.t43443"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC1ONMcnc3eloKqx1gMMhPiwms-eYs6c2U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1",
+
+  "to": "device_token",
+  "notification": {
+    "title": "Location Request",
+    "body": "Tap to send your location"
+  },
+  "data": {
+    "action": "send_location"
+  },
+  "to": "<FCM-TOKEN>",
+  "notification": {
+    "title": "Custom Action Notification",
+    "body": "Choose an option"
+  },
+  "android": {
+    "notification": {
+      "click_action": "FLUTTER_NOTIFICATION_CLICK",
+      "actions": [
+        {
+          "action": "accept",
+          "title": "Accept"
+        },
+        {
+          "action": "decline",
+          "title": "Decline"
+        }
+      ]
+    }
+  }
+
+
+}
